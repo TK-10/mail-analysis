@@ -1,43 +1,44 @@
 <?php
-/////////////////////////////////////////
-//���[������M�����ہA�N������PHP�t�@�C��//
-//    ���[���̓��e����͂�DB�ɓo�^      //
-///////////////////////////////////////      
-require_once("DB.php"); //DB�ڑ����̓ǂݍ���
-//PEAR �� Mail/mimeDecode.php ��ǂݍ���
+////////////////////////////////////////////
+///メール受信した際、起動するPHPファイル///
+///    メールの内容を解析しDBに登録     ///
+//////////////////////////////////////////
+
+require_once("DB.php"); //DB接続情報の読み込み
+//PEAR の Mail/mimeDecode.php を読み込む
 require_once 'Mail/mimeDecode.php';
 require_once 'Mail/mime.php';
 
-//�ϐ���`
+//変数定義
 $MailBody = "";
-$shorikubun = 1; //�w�����͖������̂���1��ݒ�
+$shorikubun = 1; //購入時は未発送のため1を設定
 
 
     /**
-    * ���[���f�[�^����͂���
-    * @param $mailTxt ���[���f�[�^
-    * @return ���[���̉�͌���
+    * メールデータを解析する
+    * @param $mailTxt メールデータ
+    * @return メールの解析結果
     */
-    //�W�����͂Ŏ擾
+    //標準入力で取得
     $mailTxt = file_get_contents('php://stdin');
         $params = [];
-        $params['include_bodies'] = true; //�ԋp�����f�[�^�Ƀ��[���{�̂��܂ނ��ǂ���
-        $params['decode_bodies']  = true; //�ԋp�����f�[�^�̃��[���{�̂��f�R�[�h���邩�ǂ���
-        $params['decode_headers'] = true; //�ԋp�����f�[�^�̃��[���w�b�_�[���f�R�[�h���邩�ǂ���
-        $params['crlf'] = "\r\n";         //���s�R�[�h�̎w��
+        $params['include_bodies'] = true; //返却されるデータにメール本体を含むかどうか
+        $params['decode_bodies']  = true; //返却されるデータのメール本体をデコードするかどうか
+        $params['decode_headers'] = true; //返却されるデータのメールヘッダーをデコードするかどうか
+        $params['crlf'] = "\r\n";         //改行コードの指定
  
-        //���[���{����ݒ� �e�X�g�̂���txt�Ƀ��[���̓��e�����Ă��邪�{���͕W������
+        //メール本文を設定 テストのためtxtにメールの内容を入れているが本来は標準入力
         $params['input'] = $mailTxt;
  
         	$structure = Mail_mimeDecode::decode($params);
 
 //--------------------------------------------------
-//���[���A�h���X�̎擾
+//メールアドレスの取得
 //--------------------------------------------------
 $myMail = mb_convert_encoding(mb_decode_mimeheader($structure->headers['from']), 'UTF-8', 'ISO-2022-JP');
 
 //--------------------------------------------------
-// �������擾
+// 件名を取得
 //--------------------------------------------------
 $diary_subject = mb_convert_encoding($structure->headers['subject'], 'UTF-8', 'ISO-2022-JP');
 if ($diary_subject == "") {
@@ -47,8 +48,8 @@ if ($diary_subject == null) {
     $diary_subject = "--";
 }
 switch (strtolower($structure->ctype_primary)) {
-    case "text": // �V���O���p�[�g(�e�L�X�g�̂�)
-        //gmail��UTF-8�ő��M����Ă���̂ŁA�G���R�[�h�������Ȃ�
+    case "text": // シングルパート(テキストのみ)
+        //gmailはUTF-8で送信されているので、エンコード処理しない
         $pos = strpos($myMail, "@gmail.com");
         if ($pos === false) {
             $diary_body = mb_convert_encoding($structure->body, 'UTF-8', 'ISO-2022-JP');
@@ -58,12 +59,12 @@ switch (strtolower($structure->ctype_primary)) {
         }
 
         break;
-    case "multipart": // �}���`�p�[�g(�摜�t��)
+    case "multipart": // マルチパート(画像付き)
     
         foreach ($structure->parts as $part) {
         
             switch (strtolower($part->ctype_primary)) {
-                case "text": // �e�L�X�g
+                case "text": // テキスト
                     $pos = strpos($myMail, "@gmail.com");
                     if ($pos === false) {
                         $diary_body = mb_convert_encoding($part->body, 'UTF-8', 'ISO-2022-JP');
@@ -83,86 +84,88 @@ switch (strtolower($structure->ctype_primary)) {
 }
 
 //--------------------------------------------------
-// �K�v�ȏ������
+// 必要な情報を解析
 //--------------------------------------------------
 
-//���s����؂�Ƃ��Ĕz��ɓ����
+//改行を区切りとして配列に入れる
 $array = explode("\n", $diary_body);
 
 
 for($i = 0; $i < count($array); $i++){
     
-    //�]���ȋ󔒍폜
+    //余分な空白削除
     $MailBody = trim($array[$i]);
     
-    //���iID��ϐ��Ɋi�[
-    if(strpos($array[$i], "���iID") !== false){
+    //商品IDを変数に格納
+    if(strpos($array[$i], "商品ID") !== false){
             
-        //�K�v�ȕ����ȊO�̓g�������ϐ��Ɋi�[
-        $mid = str_replace('���iID : ', '',$MailBody);
+        //必要な部分以外はトリムし変数に格納
+        $mid = str_replace('商品ID : ', '',$MailBody);
     }
     
-    //���i����ϐ��Ɋi�[
-    if(strpos($array[$i], "���i��") !== false){
+    //商品名を変数に格納
+    if(strpos($array[$i], "商品名") !== false){
         
-        //�K�v�ȕ����ȊO�̓g�������ϐ��Ɋi�[
-        $item_name = str_replace('���i�� : ', '',$MailBody); 
+        //必要な部分以外はトリムし変数に格納
+        $item_name = str_replace('商品名 : ', '',$MailBody); 
     } 
-    //���i���i��ϐ��Ɋi�[
-    if(strpos($array[$i], "���i���i") !== false){
+    
+    //商品価格を変数に格納
+    if(strpos($array[$i], "商品価格") !== false){
             
-        //�K�v�ȕ����ȊO�̓g�������ϐ��Ɋi�[
-        $item_price = str_replace('���i���i : ', '',$MailBody);
-        $item_price = str_replace('�~', '',$item_price);
+        //必要な部分以外はトリムし変数に格納
+        $item_price = str_replace('商品価格 : ', '',$MailBody);
+        $item_price = str_replace('円', '',$item_price);
     } 
-    //�w���Җ���ϐ��Ɋi�[
-    if(strpos($array[$i], "���L�̏��i��") !== false && strpos($array[$i], "���񂪍w�����܂����B") !== false){
+    
+    //購入者名を変数に格納
+    if(strpos($array[$i], "下記の商品を") !== false && strpos($array[$i], "さんが購入しました。") !== false){
             
-        //�K�v�ȕ����ȊO�̓g�������ϐ��Ɋi�[
-        $buyer_name = str_replace('���L�̏��i��', '',$MailBody);
-        $buyer_name = str_replace('���񂪍w�����܂����B', '',$buyer_name);
+        //必要な部分以外はトリムし変数に格納
+        $buyer_name = str_replace('下記の商品を', '',$MailBody);
+        $buyer_name = str_replace('さんが購入しました。', '',$buyer_name);
     }
 }
 
-   //�w�����[���̏ꍇ�A�C���T�[�g�������s��
+   //購入メールの場合、インサート処理を行う
    if(isset($buyer_name)){
        
        try{
 
-            $pdo = db("mercari");//DB���������Ƃ��ēn��
-            //�g�����U�N�V�����J�n
+            $pdo = db("mercari");//DB名を引数として渡す
+            //トランザクション開始
             $pdo->beginTransaction();
-            // SQL�쐬
+            // SQL作成
             $stmt= $pdo->prepare ("INSERT INTO mercaris (
             mid, item_name, item_price,buyer_name,shorikubun,created_at
             ) VALUES (
             :mid, :item_name, :item_price,:buyer_name,:shorikubun)");
         
-            //�l���Z�b�g
+            //値をセット
             $stmt->bindParam(':mid', $mid);
             $stmt->bindParam(':item_name', $item_name);
             $stmt->bindParam(':item_price', $item_price);
             $stmt->bindParam(':buyer_name', $buyer_name);
             $stmt->bindParam(':shorikubun', $shorikubun);
             
-            //�N�G�����s
+            //クエリ実行
             $ret = $stmt->execute();
             
             if (!$ret) {
-                throw new Exception('INSERT ���s');
+                throw new Exception('INSERT 失敗');
             }
 
             //commit
             $pdo->commit();
 
-       } catch (PDOException $e) {//���������܂������Ȃ���΃L���b�`
+       } catch (PDOException $e) {//処理がうまくいかなければキャッチ
             //rollback
             $pdo->rollBack();
-            echo "���[���o�b�N";
+            echo "ロールバック";
             die(mb_convert_encoding($e->getMessage(), 'UTF-8','SJIS-win'));
        }
 
-        //DB�ؒf
+        //DB切断
         $pdo = null;
    }
 ?>
