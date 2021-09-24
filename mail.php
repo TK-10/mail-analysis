@@ -17,9 +17,7 @@ $MailBody = "";
     * @return メールの解析結果
     */
 
-    //標準入力で取得
-    $mailTxt = file_get_contents('php://stdin');
-
+    $mailTxt = file_get_contents('mail.txt');
         $params = [];
         $params['include_bodies'] = true; //返却されるデータにメール本体を含むかどうか
         $params['decode_bodies']  = true; //返却されるデータのメール本体をデコードするかどうか
@@ -232,97 +230,95 @@ for($i = 0; $i < count($array); $i++){
             //購入メールの場合の処理
             if($kind == 1 && $site_name == "メルカリ"){
             
-            //トランザクション開始
-            $pdo->beginTransaction();
-            // SQL作成
-            $stmt= $pdo->prepare ("INSERT INTO mercaris (
-            mid, item_name, item_price,buyer_name,shorikubun,created_at
-            ) VALUES (
-            :mid, :item_name, :item_price,:buyer_name,:shorikubun,CURRENT_TIMESTAMP)");
-        
-            //値をセット
-            $stmt->bindParam(':mid', $mid);
-            $stmt->bindParam(':item_name', $item_name);
-            $stmt->bindParam(':item_price', $item_price);
-            $stmt->bindParam(':buyer_name', $buyer_name);
-            $stmt->bindParam(':shorikubun', $kind);
-            
-            //クエリ実行
-            $ret = $stmt->execute();
+                //トランザクション開始
+                $pdo->beginTransaction();
+                // SQL作成
+                $stmt= $pdo->prepare ("INSERT INTO mercaris (
+                mid, item_name, item_price,buyer_name,shorikubun,created_at
+                ) VALUES (
+                :mid, :item_name, :item_price,:buyer_name,:shorikubun,CURRENT_TIMESTAMP)");
+
+                //値をセット
+                $stmt->bindParam(':mid', $mid);
+                $stmt->bindParam(':item_name', $item_name);
+                $stmt->bindParam(':item_price', $item_price);
+                $stmt->bindParam(':buyer_name', $buyer_name);
+                $stmt->bindParam(':shorikubun', $kind);
+
+                //クエリ実行
+                $ret = $stmt->execute();
             
 //------------------------
 //　　　　在庫調整
 //------------------------
 
-            //購入があったら商品情報テーブルの在庫を-1する
-            $stmt= $pdo->prepare ("UPDATE items SET  stock = stock-1 WHERE item_id = :item_id");
-        
-            //値をセット
-            $stmt->bindParam(':item_id', $item_id);
-            
-            
-            //クエリ実行
-            $ret = $stmt->execute();
+                //購入があったら商品情報テーブルの在庫を-1する
+                $stmt= $pdo->prepare ("UPDATE items SET  stock = stock-1 WHERE item_id = :item_id");
+
+                //値をセット
+                $stmt->bindParam(':item_id', $item_id);
+
+
+                //クエリ実行
+                $ret = $stmt->execute();
             
 //------------------------
 //　　売上テーブルを更新
 //------------------------
-            //購入があったら売上テーブルの売り上げ数を+1する
-            $stmt= $pdo->prepare ("UPDATE solds SET  sold_count = sold_count+1 WHERE item_id = :item_id");
-        
-            //値をセット
-            $stmt->bindParam(':item_id', $item_id);
-            
-            
-            //クエリ実行
-            $ret = $stmt->execute();
+                //購入があったら売上テーブルの売り上げ数を+1する
+                $stmt= $pdo->prepare ("UPDATE solds SET  sold_count = sold_count+1 WHERE item_id = :item_id");
+
+                //値をセット
+                $stmt->bindParam(':item_id', $item_id);
+
+
+                //クエリ実行
+                $ret = $stmt->execute();
 //------------------------------------------
 //履歴テーブルのインサートする際の必要情報取得
 //------------------------------------------
-///////////////////////////////履歴テーブルのインサートする際の必要情報取得////////////////////////////////////////////////////////////////////////////
+                //商品情報テーブル(items)からid(履歴テーブルと関連付け)、在庫数(historiesに在庫数インサート)取得
+                $stmt= $pdo->prepare ("SELECT * FROM items WHERE item_id = :item_id");
 
-            //商品情報テーブル(items)からid(履歴テーブルと関連付け)、在庫数(historiesに在庫数インサート)取得
-            $stmt= $pdo->prepare ("SELECT * FROM items WHERE item_id = :item_id");
-        
-            //値をセット
-            $stmt->bindParam(':item_id', $item_id);
-            
-            
-            //クエリ実行
-            $ret = $stmt->execute();     
-            
-            // 該当するデータを取得
-            if( $ret ) {
-                $data = $stmt->fetch();
-                $stock  = $data['stock'];//在庫数
-                
-            }
+                //値をセット
+                $stmt->bindParam(':item_id', $item_id);
+
+
+                //クエリ実行
+                $ret = $stmt->execute();     
+
+                // 該当するデータを取得
+                if( $ret ) {
+                    $data = $stmt->fetch();
+                    $stock  = $data['stock'];//在庫数
+
+                }
 //--------------------------------
 //履歴(history)テーブルにインサート
 //--------------------------------    
-            //履歴(history)テーブルにインサート
-            $stmt= $pdo->prepare ("INSERT INTO histories (
-             item_name, item_price,site_name, status,stock,item_id,created_at
-            ) VALUES (
-            :item_name, :item_price,:site_name,:status,:stock,:item_id,CURRENT_TIMESTAMP)");
-        
-            //値をセット
-            $stmt->bindParam(':item_name', $item_name);
-            $stmt->bindParam(':item_price', $item_price);
-            $stmt->bindParam(':site_name', $site_name);
-            $stmt->bindParam(':status', $status);
-            $stmt->bindParam(':stock', $stock);
-            $stmt->bindParam(':item_id', $item_id);
-            
-            var_dump($item_id);
-            
-            //クエリ実行
-            $ret = $stmt->execute();            
+                //履歴(history)テーブルにインサート
+                $stmt= $pdo->prepare ("INSERT INTO histories (
+                 item_name, item_price,site_name, status,stock,item_id,created_at
+                ) VALUES (
+                :item_name, :item_price,:site_name,:status,:stock,:item_id,CURRENT_TIMESTAMP)");
+
+                //値をセット
+                $stmt->bindParam(':item_name', $item_name);
+                $stmt->bindParam(':item_price', $item_price);
+                $stmt->bindParam(':site_name', $site_name);
+                $stmt->bindParam(':status', $status);
+                $stmt->bindParam(':stock', $stock);
+                $stmt->bindParam(':item_id', $item_id);
+
+                var_dump($item_id);
+
+                //クエリ実行
+                $ret = $stmt->execute();            
             }
-              
-            if (!$ret) {
-                throw new Exception('INSERT 失敗');
-            }
+
+                if (!$ret) {
+                    throw new Exception('INSERT 失敗');
+                }
             //commit
             $pdo->commit();
 
