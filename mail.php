@@ -17,7 +17,9 @@ $MailBody = "";
     * @return メールの解析結果
     */
 
-    $mailTxt = file_get_contents('mail.txt');
+    //標準入力で取得
+    $stdin = file_get_contents("php://stdin");
+
         $params = [];
         $params['include_bodies'] = true; //返却されるデータにメール本体を含むかどうか
         $params['decode_bodies']  = true; //返却されるデータのメール本体をデコードするかどうか
