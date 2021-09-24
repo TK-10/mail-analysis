@@ -18,7 +18,7 @@ $MailBody = "";
     */
 
     //標準入力で取得
-    $stdin = file_get_contents("php://stdin");
+    $mailTxt = file_get_contents("php://stdin");
 
         $params = [];
         $params['include_bodies'] = true; //返却されるデータにメール本体を含むかどうか
