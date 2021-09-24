@@ -1,9 +1,8 @@
 <?php
-////////////////////////////////////////////
-///メール受信した際、起動するPHPファイル///
-///    メールの内容を解析しDBに登録     ///
-//////////////////////////////////////////
-
+/////////////////////////////////////////
+//メールを受信した際、起動するPHPファイル//
+//    メールの内容を解析しDBに登録      //
+///////////////////////////////////////      
 require_once("DB.php"); //DB接続情報の読み込み
 //PEAR の Mail/mimeDecode.php を読み込む
 require_once 'Mail/mimeDecode.php';
@@ -11,16 +10,16 @@ require_once 'Mail/mime.php';
 
 //変数定義
 $MailBody = "";
-$shorikubun = 1; //購入時は未発送のため1を設定
-
 
     /**
     * メールデータを解析する
     * @param $mailTxt メールデータ
     * @return メールの解析結果
     */
+
     //標準入力で取得
     $mailTxt = file_get_contents('php://stdin');
+
         $params = [];
         $params['include_bodies'] = true; //返却されるデータにメール本体を含むかどうか
         $params['decode_bodies']  = true; //返却されるデータのメール本体をデコードするかどうか
@@ -84,7 +83,7 @@ switch (strtolower($structure->ctype_primary)) {
 }
 
 //--------------------------------------------------
-// 必要な情報を解析
+// 必要な情報を解析(共通処理)
 //--------------------------------------------------
 
 //改行を区切りとして配列に入れる
@@ -95,19 +94,31 @@ for($i = 0; $i < count($array); $i++){
     
     //余分な空白削除
     $MailBody = trim($array[$i]);
+   
+    //メルカリのメールかどうかの判定
+    if(strpos($array[$i], "メルカリ") !== false){
+            
+        $site_name = "メルカリ";
+        
+    }
     
     //商品IDを変数に格納
     if(strpos($array[$i], "商品ID") !== false){
             
         //必要な部分以外はトリムし変数に格納
         $mid = str_replace('商品ID : ', '',$MailBody);
+        var_dump($mid);
     }
     
     //商品名を変数に格納
     if(strpos($array[$i], "商品名") !== false){
         
         //必要な部分以外はトリムし変数に格納
-        $item_name = str_replace('商品名 : ', '',$MailBody); 
+        $item_name = str_replace('商品名 : ', '',$MailBody);
+        //末尾に付与されているidを格納
+        $item_id = str_replace('】', '',mb_substr($item_name,-7));
+        var_dump($item_name);
+        
     } 
     
     //商品価格を変数に格納
@@ -116,45 +127,202 @@ for($i = 0; $i < count($array); $i++){
         //必要な部分以外はトリムし変数に格納
         $item_price = str_replace('商品価格 : ', '',$MailBody);
         $item_price = str_replace('円', '',$item_price);
+        var_dump($item_price);
+        
     } 
+//--------------------------------------------------
+// 必要な情報を解析(購入メール) 購入
+//--------------------------------------------------    
     
-    //購入者名を変数に格納
+     //購入者名を変数に格納
     if(strpos($array[$i], "下記の商品を") !== false && strpos($array[$i], "さんが購入しました。") !== false){
             
         //必要な部分以外はトリムし変数に格納
         $buyer_name = str_replace('下記の商品を', '',$MailBody);
         $buyer_name = str_replace('さんが購入しました。', '',$buyer_name);
+        
+        //ステータスを0:購入にする (購入時のみ履歴テーブル(histories)に残す
+        $status = 0;
+        
+        //区別を未到着にする
+        $kind = 1;
+        
+    }
+//--------------------------------------------------
+// 必要な情報を解析(取引完了メール) 到着済み
+//--------------------------------------------------
+
+   //取引完了のメールかどうかの判定
+    if(strpos($array[$i], "下記の商品の取引が完了") !== false){
+                    
+        //区別を到着済みにする
+        $kind = 2;
+        
+    }
+    
+//--------------------------------------------------
+// 必要な情報を解析(取引キャンセルメール) 返品
+//--------------------------------------------------
+
+   //取引完了のメールかどうかの判定
+    if(strpos($array[$i], "キャンセル申請成立") !== false){
+                    
+        //区別を返品にする
+        $kind = 3;
+        
     }
 }
-
-   //購入メールの場合、インサート処理を行う
-   if(isset($buyer_name)){
-       
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////下記DB処理///////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    
        try{
+           //DB名を引数として渡す
+           $pdo = db("mercari");
+           
+//--------------------------------------------------
+//              返品メールの処理
+//--------------------------------------------------
+            //返品メールの場合の処理
+            if($kind == 3 && $site_name == "メルカリ"){
+                
+                //トランザクション開始
+                $pdo->beginTransaction();
+                //ステータスを1到着済みに更新
+                $stmt= $pdo->prepare ("UPDATE mercaris SET  shorikubun = 3 WHERE mid = :mid");
 
-            $pdo = db("mercari");//DB名を引数として渡す
+                //値をセット
+                $stmt->bindParam(':mid', $mid);
+            
+                //クエリ実行
+                $ret = $stmt->execute();
+//------------------------
+//　　　　在庫調整
+//------------------------
+                //購入があったら商品情報テーブルの在庫を-1する
+                $stmt= $pdo->prepare ("UPDATE items SET  stock = stock+1 WHERE item_id = :item_id");
+
+                //値をセット
+                $stmt->bindParam(':item_id', $item_id);
+
+                //クエリ実行
+                $ret = $stmt->execute();
+            }
+//--------------------------------------------------
+//              取引完了メールの処理
+//--------------------------------------------------
+            
+            //取引完了メールの場合の処理
+            if($kind == 2 && $site_name == "メルカリ"){
+                //トランザクション開始
+                $pdo->beginTransaction();
+                //ステータスを1到着済みに更新
+                $stmt= $pdo->prepare ("UPDATE mercaris SET  shorikubun = 2 WHERE mid = :mid");
+
+                //値をセット
+                $stmt->bindParam(':mid', $mid);
+
+
+                //クエリ実行
+                $ret = $stmt->execute();
+            }
+//--------------------------------------------------
+//              購入メールの処理
+//--------------------------------------------------            
+            //購入メールの場合の処理
+            if($kind == 1 && $site_name == "メルカリ"){
+            
             //トランザクション開始
             $pdo->beginTransaction();
             // SQL作成
             $stmt= $pdo->prepare ("INSERT INTO mercaris (
             mid, item_name, item_price,buyer_name,shorikubun,created_at
             ) VALUES (
-            :mid, :item_name, :item_price,:buyer_name,:shorikubun)");
+            :mid, :item_name, :item_price,:buyer_name,:shorikubun,CURRENT_TIMESTAMP)");
         
             //値をセット
             $stmt->bindParam(':mid', $mid);
             $stmt->bindParam(':item_name', $item_name);
             $stmt->bindParam(':item_price', $item_price);
             $stmt->bindParam(':buyer_name', $buyer_name);
-            $stmt->bindParam(':shorikubun', $shorikubun);
+            $stmt->bindParam(':shorikubun', $kind);
             
             //クエリ実行
             $ret = $stmt->execute();
             
+//------------------------
+//　　　　在庫調整
+//------------------------
+
+            //購入があったら商品情報テーブルの在庫を-1する
+            $stmt= $pdo->prepare ("UPDATE items SET  stock = stock-1 WHERE item_id = :item_id");
+        
+            //値をセット
+            $stmt->bindParam(':item_id', $item_id);
+            
+            
+            //クエリ実行
+            $ret = $stmt->execute();
+            
+//------------------------
+//　　売上テーブルを更新
+//------------------------
+            //購入があったら売上テーブルの売り上げ数を+1する
+            $stmt= $pdo->prepare ("UPDATE solds SET  sold_count = sold_count+1 WHERE item_id = :item_id");
+        
+            //値をセット
+            $stmt->bindParam(':item_id', $item_id);
+            
+            
+            //クエリ実行
+            $ret = $stmt->execute();
+//------------------------------------------
+//履歴テーブルのインサートする際の必要情報取得
+//------------------------------------------
+///////////////////////////////履歴テーブルのインサートする際の必要情報取得////////////////////////////////////////////////////////////////////////////
+
+            //商品情報テーブル(items)からid(履歴テーブルと関連付け)、在庫数(historiesに在庫数インサート)取得
+            $stmt= $pdo->prepare ("SELECT * FROM items WHERE item_id = :item_id");
+        
+            //値をセット
+            $stmt->bindParam(':item_id', $item_id);
+            
+            
+            //クエリ実行
+            $ret = $stmt->execute();     
+            
+            // 該当するデータを取得
+            if( $ret ) {
+                $data = $stmt->fetch();
+                $stock  = $data['stock'];//在庫数
+                
+            }
+//--------------------------------
+//履歴(history)テーブルにインサート
+//--------------------------------    
+            //履歴(history)テーブルにインサート
+            $stmt= $pdo->prepare ("INSERT INTO histories (
+             item_name, item_price,site_name, status,stock,item_id,created_at
+            ) VALUES (
+            :item_name, :item_price,:site_name,:status,:stock,:item_id,CURRENT_TIMESTAMP)");
+        
+            //値をセット
+            $stmt->bindParam(':item_name', $item_name);
+            $stmt->bindParam(':item_price', $item_price);
+            $stmt->bindParam(':site_name', $site_name);
+            $stmt->bindParam(':status', $status);
+            $stmt->bindParam(':stock', $stock);
+            $stmt->bindParam(':item_id', $item_id);
+            
+            var_dump($item_id);
+            
+            //クエリ実行
+            $ret = $stmt->execute();            
+            }
+              
             if (!$ret) {
                 throw new Exception('INSERT 失敗');
             }
-
             //commit
             $pdo->commit();
 
@@ -167,5 +335,6 @@ for($i = 0; $i < count($array); $i++){
 
         //DB切断
         $pdo = null;
-   }
+   
+
 ?>
