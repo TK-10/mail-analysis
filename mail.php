@@ -107,7 +107,7 @@ for($i = 0; $i < count($array); $i++){
             
         //必要な部分以外はトリムし変数に格納
         $mid = str_replace('商品ID : ', '',$MailBody);
-        var_dump($mid);
+        //var_dump($mid);
     }
     
     //商品名を変数に格納
@@ -117,7 +117,7 @@ for($i = 0; $i < count($array); $i++){
         $item_name = str_replace('商品名 : ', '',$MailBody);
         //末尾に付与されているidを格納
         $item_id = str_replace('】', '',mb_substr($item_name,-7));
-        var_dump($item_name);
+        //var_dump($item_name);
         
     } 
     
@@ -127,7 +127,7 @@ for($i = 0; $i < count($array); $i++){
         //必要な部分以外はトリムし変数に格納
         $item_price = str_replace('商品価格 : ', '',$MailBody);
         $item_price = str_replace('円', '',$item_price);
-        var_dump($item_price);
+        //var_dump($item_price);
         
     } 
 //--------------------------------------------------
@@ -172,7 +172,7 @@ for($i = 0; $i < count($array); $i++){
         
     }
 }
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////下記DB処理//////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
     
@@ -312,7 +312,7 @@ for($i = 0; $i < count($array); $i++){
                 $stmt->bindParam(':stock', $stock);
                 $stmt->bindParam(':item_id', $item_id);
 
-                var_dump($item_id);
+                //var_dump($item_id);
 
                 //クエリ実行
                 $ret = $stmt->execute();            
